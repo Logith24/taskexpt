@@ -1,35 +1,69 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import Particles, { initParticlesEngine } from "@tsparticles/react";
+import { loadSlim } from "@tsparticles/slim";
 
-import Particles from "react-tsparticles";
-import { loadSlim } from "tsparticles-slim";
-
+import { API_BASE } from "../api/config";
 import "../styles/login.css";
 
 function Login() {
 
   const [isRegister, setIsRegister] = useState(false);
+  const [particlesReady, setParticlesReady] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
   const navigate = useNavigate();
 
-  const particlesInit = async (engine) => {
-    await loadSlim(engine);
-  };
+  useEffect(() => {
+    initParticlesEngine(async (engine) => {
+      await loadSlim(engine);
+    })
+      .then(() => setParticlesReady(true));
+  }, []);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setError("");
 
-    if (!username || !password) {
-      alert("Please fill all fields");
+    if (!username.trim() || !password) {
+      setError("Please fill all fields");
       return;
     }
 
-    localStorage.setItem("user", username);
+    setLoading(true);
 
-    navigate("/dashboard");
+    try {
+      const endpoint = isRegister ? "/api/auth/register" : "/api/auth/login";
+
+      const response = await fetch(`${API_BASE}${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: username.trim(),
+          password,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.message || "Authentication failed");
+        return;
+      }
+
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("user", data.user.username);
+
+      navigate("/dashboard");
+    } catch {
+      setError("Cannot reach server. Make sure the API is running.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -37,9 +71,9 @@ function Login() {
 
       {/* Particles Background */}
 
+      {particlesReady && (
       <Particles
         id="tsparticles"
-        init={particlesInit}
         options={{
           background: {
             color: {
@@ -112,6 +146,7 @@ function Login() {
           detectRetina: true,
         }}
       />
+      )}
 
       {/* Login Container */}
 
@@ -130,6 +165,8 @@ function Login() {
               ? "Register to continue"
               : "Login to manage your expenses"}
           </p>
+
+          {error && <p className="auth-error">{error}</p>}
 
           <form onSubmit={handleSubmit}>
 
@@ -151,10 +188,12 @@ function Login() {
               }
             />
 
-            <button type="submit">
-              {isRegister
-                ? "Register"
-                : "Login"}
+            <button type="submit" disabled={loading}>
+              {loading
+                ? "Please wait..."
+                : isRegister
+                  ? "Register"
+                  : "Login"}
             </button>
 
           </form>
@@ -166,9 +205,10 @@ function Login() {
               : "Don't have an account?"}
 
             <span
-              onClick={() =>
-                setIsRegister(!isRegister)
-              }
+              onClick={() => {
+                setIsRegister(!isRegister);
+                setError("");
+              }}
             >
               {isRegister
                 ? " Sign In"
